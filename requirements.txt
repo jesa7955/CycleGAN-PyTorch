@@ -1,0 +1,6 @@
+nose
+sphinx
+torch
+torchvision
+scipy
+numpy
