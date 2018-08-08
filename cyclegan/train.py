@@ -1,7 +1,7 @@
 import argparse
 import os
+import sys
 import itertools
-import numpy as np
 import math
 import datetime
 import time
@@ -14,7 +14,6 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from PIL import Image
 
 from models import CycleGenerator, Discriminator
@@ -28,13 +27,33 @@ def train_loop(opts):
     elif opts.image_height >= 256:
         res_blocks = 9
 
-    device = torch.device(f'cuda:{opts.gpu_id}' if torch.cuda.is_available() else 'cpu')
-
     # Create networks
     G_AB = CycleGenerator(opts.a_channels, opts.b_channels, res_blocks).to(device)
     G_BA = CycleGenerator(opts.b_channels, opts.a_channels, res_blocks).to(device)
     D_A = Discriminator(opts.a_channels, opts.d_conv_dim).to(device)
     D_B = Discriminator(opts.b_channels, opts.d_conv_dim).to(device)
+
+    # Print network architecture
+    print("                 G_AtoB                ")
+    print("---------------------------------------")
+    print(G_AB)
+    print("---------------------------------------")
+
+    print("                 G_BtoA                ")
+    print("---------------------------------------")
+    print(G_BA)
+    print("---------------------------------------")
+
+    print("                  D_A                  ")
+    print("---------------------------------------")
+    print(D_A)
+    print("---------------------------------------")
+
+    print("                  D_B                  ")
+    print("---------------------------------------")
+    print(D_B)
+    print("---------------------------------------")
+
 
     # Create losses
     criterion_gan = torch.nn.MSELoss()
@@ -72,21 +91,22 @@ def train_loop(opts):
     test_dataloader = DataLoader(CycleGANDataset(opts.dataroot_dir, opts.dataset_name, transform, mode='test'), batch_size=5, shuffle=False, num_workers=1)
 
 
-    for epoch in range(opts.epochs-opts.start_epoch):
+    end_epoch = opts.epochs + opts.start_epoch
+    total_batch = len(train_dataloader) * opts.epochs
+    for epoch in range(opts.start_epoch, end_epoch):
         for index, batch in enumerate(train_dataloader):
             # Create adversarial target
             real_A = Variable(batch['A'].to(device))
             real_B = Variable(batch['B'].to(device))
             fake_A, fake_B = G_BA(real_B), G_AB(real_A)
-            reconstructed_A, reconstructed_B = G_BA(fake_B), G_AB(fake_A)
 
             # Train discriminator A
             d_a_optimizer.zero_grad()
 
             patch_real = D_A(real_A)
-            loss_a_real = criterion_gan(patch_real, torch.tensor(1.0).expand_as(patch_real))
+            loss_a_real = criterion_gan(patch_real, torch.tensor(1.0).expand_as(patch_real).to(device))
             patch_fake = D_A(fake_A)
-            loss_a_fake = criterion_gan(patch_fake, torch.tensor(0.0).expand_as(patch_fake))
+            loss_a_fake = criterion_gan(patch_fake, torch.tensor(0.0).expand_as(patch_fake).to(device))
             loss_d_a = (loss_a_real + loss_a_fake) / 2
             loss_d_a.backward()
             d_a_optimizer.step()
@@ -95,20 +115,23 @@ def train_loop(opts):
             d_b_optimizer.zero_grad()
 
             patch_real = D_B(real_B)
-            loss_b_real = criterion_gan(patch_real, torch.tensor(1.0).expand_as(patch_real))
+            loss_b_real = criterion_gan(patch_real, torch.tensor(1.0).expand_as(patch_real).to(device))
             patch_fake = D_B(fake_B)
-            loss_b_fake = criterion_gan(patch_fake, torch.tensor(0.0).expand_as(patch_fake))
+            loss_b_fake = criterion_gan(patch_fake, torch.tensor(0.0).expand_as(patch_fake).to(device))
             loss_d_b = (loss_b_real + loss_b_fake) / 2
             loss_d_b.backward()
             d_b_optimizer.step()
 
             # Train generator
 
+            g_optimizer.zero_grad()
+            fake_A, fake_B = G_BA(real_B), G_AB(real_A)
+            reconstructed_A, reconstructed_B = G_BA(fake_B), G_AB(fake_A)
             # GAN loss
             patch_a = D_A(fake_A)
-            loss_gan_ba = criterion_gan(patch_a, torch.tensor(1.0).expand_as(patch_a))
+            loss_gan_ba = criterion_gan(patch_a, torch.tensor(1.0).expand_as(patch_a).to(device))
             patch_b = D_B(fake_B)
-            loss_gan_ab = criterion_gan(patch_b, torch.tensor(1.0).expand_as(patch_b))
+            loss_gan_ab = criterion_gan(patch_b, torch.tensor(1.0).expand_as(patch_b).to(device))
             loss_gan = (loss_gan_ab + loss_gan_ba) / 2
 
             # Cycle loss
@@ -126,25 +149,28 @@ def train_loop(opts):
             loss_g.backward()
             g_optimizer.step()
 
-            if index % opts.log_step == 0:
-                print(f"[Epoch {epoch+1}/{epochs-start_epoch}] [Index {index}] [D_A loss: {loss_d_a.item()}] [D_B loss: {loss_d_b.item}] [G loss: adv: {loss_gan.item()}, cycle: {loss_cycle.item()}, identity: {loss_identity.item()}")
+            current_batch = epoch * len(train_dataloader) + index
+            sys.stdout.write(f"\r[Epoch {epoch+1}/{opts.epochs-opts.start_epoch}] [Index {index}/{len(train_dataloader)}] [D_A loss: {loss_d_a.item():.4f}] [D_B loss: {loss_d_b.item():.4f}] [G loss: adv: {loss_gan.item():.4f}, cycle: {loss_cycle.item():.4f}, identity: {loss_identity.item():.4f}]")
 
-            if index % opts.sample_every == 0:
-                save_sample(G_AB, G_BA, (index+1)*(epoch+1), opts)
+            if current_batch % opts.sample_every == 0:
+                save_sample(G_AB, G_BA, current_batch, opts, test_dataloader)
 
         # Update learning reate
         g_lr_scheduler.step()
         d_a_lr_scheduler.step()
         d_b_lr_scheduler.step()
+        if epoch % opts.checkpoint_every == 0:
+            torch.save(G_AB.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/G_AB_{epoch}.pth')
+            torch.save(G_BA.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/G_BA_{epoch}.pth')
+            torch.save(D_A.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/D_A_{epoch}.pth')
+            torch.save(D_B.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/D_B_{epoch}.pth')
 
-
-
-def save_sample(G_AB, G_BA, batch, opts):
+def save_sample(G_AB, G_BA, batch, opts, test_dataloader):
     images = next(iter(test_dataloader))
     real_A = Variable(images['A'].to(device))
     real_B = Variable(images['B'].to(device))
     fake_A = G_BA(real_B)
-    fake_B = G_BA(real_A)
+    fake_B = G_AB(real_A)
     image_sample = torch.cat((real_A.data, fake_B.data,
                               real_B.data, fake_A.data), 0)
     save_image(image_sample, f"{opts.sample_dir}/{opts.dataset_name}/{batch}.png", nrow=5, normalize=True)
@@ -179,9 +205,8 @@ def create_parser():
     parser.add_argument('--sample_dir', type=str, default='samples_cyclegan')
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--log_step', type=int , default=20)
-    parser.add_argument('--sample_every', type=int , default=100)
-    parser.add_argument('--checkpoint_every', type=int , default=800)
-
+    parser.add_argument('--sample_every', type=int , default=100, help='サンプルをとる頻度、batch単位.')
+    parser.add_argument('--checkpoint_every', type=int , default=1, help='Check pointをとる頻度、epoch単位.')
     return parser
 
 
@@ -201,8 +226,10 @@ if __name__ == '__main__':
     parser = create_parser()
     opts = parser.parse_args()
 
-    os.makedirs(f"{opts.sample_dir}", exist_ok=True)
-    os.makedirs(f"{opts.checkpoint_dir}", exist_ok=True)
+    device = torch.device(f'cuda:{opts.gpu_id}' if torch.cuda.is_available() else 'cpu')
+
+    os.makedirs(f"{opts.sample_dir}/{opts.dataset_name}", exist_ok=True)
+    os.makedirs(f"{opts.checkpoint_dir}/{opts.dataset_name}", exist_ok=True)
 
     if opts.load:
         opts.sample_dir = '{}_pretrained'.format(opts.sample_dir)
