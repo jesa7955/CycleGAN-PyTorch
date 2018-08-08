@@ -93,3 +93,9 @@ ENV/
 /data/*/
 /samples/*.sh
 /samples/full-spec-reference
+/Makefile
+/_build/*
+/conf.py
+/index.rst
+/make.bat
+
