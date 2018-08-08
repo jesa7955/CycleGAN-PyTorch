@@ -91,3 +91,5 @@ ENV/
 
 # Data files
 /data/*/
+/samples/*.sh
+/samples/full-spec-reference

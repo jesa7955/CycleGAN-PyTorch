@@ -160,10 +160,10 @@ def train_loop(opts):
         d_a_lr_scheduler.step()
         d_b_lr_scheduler.step()
         if epoch % opts.checkpoint_every == 0:
-            torch.save(G_AB.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/G_AB_{epoch}.pth')
-            torch.save(G_BA.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/G_BA_{epoch}.pth')
-            torch.save(D_A.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/D_A_{epoch}.pth')
-            torch.save(D_B.state_dict(), '{opts.checkpoint_dir}/{opts.dataset_name}/D_B_{epoch}.pth')
+            torch.save(G_AB.state_dict(), f'{opts.checkpoint_dir}/{opts.dataset_name}/G_AB_{epoch}.pth')
+            torch.save(G_BA.state_dict(), f'{opts.checkpoint_dir}/{opts.dataset_name}/G_BA_{epoch}.pth')
+            torch.save(D_A.state_dict(), f'{opts.checkpoint_dir}/{opts.dataset_name}/D_A_{epoch}.pth')
+            torch.save(D_B.state_dict(), f'{opts.checkpoint_dir}/{opts.dataset_name}/D_B_{epoch}.pth')
 
 def save_sample(G_AB, G_BA, batch, opts, test_dataloader):
     images = next(iter(test_dataloader))
@@ -171,8 +171,11 @@ def save_sample(G_AB, G_BA, batch, opts, test_dataloader):
     real_B = Variable(images['B'].to(device))
     fake_A = G_BA(real_B)
     fake_B = G_AB(real_A)
+    reconstructed_A = G_BA(fake_B)
+    reconstructed_B = G_AB(fake_A)
     image_sample = torch.cat((real_A.data, fake_B.data,
-                              real_B.data, fake_A.data), 0)
+                              real_B.data, fake_A.data,
+                              reconstructed_A.data, reconstructed_B.data), 0)
     save_image(image_sample, f"{opts.sample_dir}/{opts.dataset_name}/{batch}.png", nrow=5, normalize=True)
 
 def create_parser():
