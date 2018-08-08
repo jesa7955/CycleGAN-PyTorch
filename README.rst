@@ -59,7 +59,7 @@ cyclegan
 
 * 実行方法
 
- これらのコマンドにより「facades]のデータセットで200エポックの学習を行う。トレーニングを開始する前に生成ネットワークと識別ネットワークのアーキテクチャやパラメータを出力する。
+ これらのコマンドにより「facades」 [4]_ のデータセットで200エポックの学習を行う。トレーニングを開始する前に生成ネットワークと識別ネットワークのアーキテクチャやパラメータを出力する。
 
   ``cd data && ./download_cyclegan_dataset.sh facades``
 
@@ -67,16 +67,16 @@ cyclegan
 
 * 実験結果
 
- .. image:: samples/full-spec/some.png 
+ .. image:: samples/full-spec/79900.png
 
- 上から下までの順番は下記のようになる。
+ このサンプルの上から下までの一行一行に対応する画像の種類は下記の順番になる。
 
- * facade
- * facade -> label
- * label
- * label -> facade
- * facade -> label -> facade
- * label -> facade -> label
+ * (real_facade): facade
+ * (fake_label): facade -> label
+ * (real_label): label
+ * (fake_facade): label -> facade
+ * (reconstructed facade): facade -> label -> facade
+ * (reconstructed label): label -> facade -> label
 
 ++++
 data
@@ -88,7 +88,7 @@ data
 samples
 +++++++
 
- 実験結果やモデルのアーキテクチャの画像。
+ 実験結果や簡易バージョンモデルのアーキテクチャ画像。
 
 ================
 参考になったもの
@@ -98,5 +98,7 @@ samples
 .. [2] `元論文と一緒に配布されたPyTorchによる実装 <https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix>`_
 
 .. [3] `いろんな種類のGANを実装したレポジトリ <https://github.com/eriklindernoren/PyTorch-GAN>`_
+
+.. [4] `CMP Facade Database <http://cmp.felk.cvut.cz/~tylecr1/facade/>`_
 
 ---------------
